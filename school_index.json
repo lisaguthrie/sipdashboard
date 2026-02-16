@@ -1,0 +1,268 @@
+{
+    "high": [
+        {
+            "school": "Eastlake High School",
+            "start": 1,
+            "end": 9
+        },
+        {
+            "school": "Emerson High School",
+            "start": 10,
+            "end": 19
+        },
+        {
+            "school": "International Community School (ICS)",
+            "start": 20,
+            "end": 30
+        },
+        {
+            "school": "Juanita High School",
+            "start": 31,
+            "end": 38
+        },
+        {
+            "school": "Lake Washington High School",
+            "start": 39,
+            "end": 49
+        },
+        {
+            "school": "Redmond High School",
+            "start": 50,
+            "end": 59
+        },
+        {
+            "school": "Nikola Tesla STEM High School",
+            "start": 60,
+            "end": 71
+        }
+    ],
+    "middle": [
+        {
+            "school": "The Environmental & Adventure School",
+            "start": 1,
+            "end": 9
+        },
+        {
+            "school": "Evergreen Middle School",
+            "start": 10,
+            "end": 18
+        },
+        {
+            "school": "Finn Hill Middle School",
+            "start": 19,
+            "end": 26
+        },
+        {
+            "school": "Inglewood Middle School",
+            "start": 27,
+            "end": 34
+        },
+        {
+            "school": "International Community School",
+            "start": 35,
+            "end": 45
+        },
+        {
+            "school": "Kamiakin Middle School",
+            "start": 46,
+            "end": 56
+        },
+        {
+            "school": "Kirkland Middle School",
+            "start": 57,
+            "end": 72
+        },
+        {
+            "school": "Northstar Middle School",
+            "start": 73,
+            "end": 80
+        },
+        {
+            "school": "Redmond Middle School",
+            "start": 81,
+            "end": 89
+        },
+        {
+            "school": "Renaissance School of Arts and Reasoning",
+            "start": 90,
+            "end": 96
+        },
+        {
+            "school": "Rose Hill Middle School",
+            "start": 97,
+            "end": 109
+        },
+        {
+            "school": "Stella Schola Middle School",
+            "start": 110,
+            "end": 117
+        },
+        {
+            "school": "Timberline Middle School",
+            "start": 118,
+            "end": 126
+        }
+    ],
+    "elementary": [
+        {
+            "school": "Alcott Elementary",
+            "start": 1,
+            "end": 9
+        },
+        {
+            "school": "Audubon Elementary",
+            "start": 10,
+            "end": 19
+        },
+        {
+            "school": "A. G. Bell Elementary",
+            "start": 20,
+            "end": 33
+        },
+        {
+            "school": "Elizabeth Blackwell Elementary School",
+            "start": 34,
+            "end": 49
+        },
+        {
+            "school": "Rachel Carson Elementary",
+            "start": 50,
+            "end": 55
+        },
+        {
+            "school": "Clara Barton Elementary",
+            "start": 56,
+            "end": 65
+        },
+        {
+            "school": "Community School",
+            "start": 66,
+            "end": 72
+        },
+        {
+            "school": "Emily Dickinson Elementary School",
+            "start": 73,
+            "end": 83
+        },
+        {
+            "school": "Discovery Community School",
+            "start": 84,
+            "end": 93
+        },
+        {
+            "school": "Einstein Elementary School",
+            "start": 94,
+            "end": 102
+        },
+        {
+            "school": "Ella Baker Elementary",
+            "start": 103,
+            "end": 113
+        },
+        {
+            "school": "Explorer Community School",
+            "start": 114,
+            "end": 122
+        },
+        {
+            "school": "Benjamin Franklin Elementary School",
+            "start": 123,
+            "end": 132
+        },
+        {
+            "school": "Robert Frost Elementary School",
+            "start": 133,
+            "end": 146
+        },
+        {
+            "school": "Juanita Elementary School",
+            "start": 147,
+            "end": 156
+        },
+        {
+            "school": "Helen Keller Elementary",
+            "start": 157,
+            "end": 168
+        },
+        {
+            "school": "Peter Kirk Elementary",
+            "start": 169,
+            "end": 182
+        },
+        {
+            "school": "Lakeview Elementary School",
+            "start": 183,
+            "end": 195
+        },
+        {
+            "school": "Horace Mann Elementary School",
+            "start": 196,
+            "end": 204
+        },
+        {
+            "school": "Christa McAuliffe Elementary",
+            "start": 205,
+            "end": 219
+        },
+        {
+            "school": "Margaret Mead Elementary School",
+            "start": 220,
+            "end": 232
+        },
+        {
+            "school": "John Muir Elementary School",
+            "start": 233,
+            "end": 241
+        },
+        {
+            "school": "Redmond Elementary",
+            "start": 242,
+            "end": 250
+        },
+        {
+            "school": "Norman Rockwell Elementary School",
+            "start": 251,
+            "end": 257
+        },
+        {
+            "school": "Rosa Parks Elementary",
+            "start": 258,
+            "end": 269
+        },
+        {
+            "school": "Rose Hill Elementary",
+            "start": 270,
+            "end": 280
+        },
+        {
+            "school": "Benjamin Rush Elementary School",
+            "start": 281,
+            "end": 290
+        },
+        {
+            "school": "Carl Sandburg Elementary School",
+            "start": 291,
+            "end": 302
+        },
+        {
+            "school": "Samantha Smith Elementary School",
+            "start": 303,
+            "end": 311
+        },
+        {
+            "school": "Thoreau Elementary",
+            "start": 312,
+            "end": 321
+        },
+        {
+            "school": "Mark Twain Elementary",
+            "start": 322,
+            "end": 335
+        },
+        {
+            "school": "Laura Ingalls Wilder Elementary School",
+            "start": 336,
+            "end": 346
+        }
+    ]
+}
