@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Upload, Search, MessageSquare, X, ChevronDown, ChevronUp, FileText, TrendingUp } from 'lucide-react';
 
+// For external deployments: Set your API key here or use environment variables
+// Leave empty for Claude artifacts (authentication handled automatically)
+const ANTHROPIC_API_KEY = '';
+
 const SIPDashboard = () => {
   const [schools, setSchools] = useState([]);
   const [selectedSchool, setSelectedSchool] = useState(null);
@@ -14,21 +18,53 @@ const SIPDashboard = () => {
   const [expandedAnalysis, setExpandedAnalysis] = useState(false);
   const [showDataInput, setShowDataInput] = useState(false);
   const [jsonInput, setJsonInput] = useState('');
+  const [txtInput, setTxtInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedGoalIndex, setExpandedGoalIndex] = useState(null);
+  const [confirmClearChat, setConfirmClearChat] = useState(false);
 
-  // Load data from persistent storage
-  useEffect(() => {
-    loadData();
-    loadChatHistory();
-  }, []);
+  // Storage adapter that works in both Claude artifacts and regular browsers
+  const storage = {
+    get: async (key) => {
+      try {
+        if (typeof window !== 'undefined' && window.storage && window.storage.get) {
+          const result = await window.storage.get(key, true);
+          return result?.value || null;
+        }
+        return localStorage.getItem(key);
+      } catch (e) {
+        return localStorage.getItem(key);
+      }
+    },
+    set: async (key, value) => {
+      try {
+        if (typeof window !== 'undefined' && window.storage && window.storage.set) {
+          await window.storage.set(key, value, true);
+          return;
+        }
+        localStorage.setItem(key, value);
+      } catch (e) {
+        localStorage.setItem(key, value);
+      }
+    },
+    remove: async (key) => {
+      try {
+        if (typeof window !== 'undefined' && window.storage && window.storage.delete) {
+          await window.storage.delete(key, true);
+          return;
+        }
+        localStorage.removeItem(key);
+      } catch (e) {
+        localStorage.removeItem(key);
+      }
+    }
+  };
 
   const loadData = async () => {
     try {
-      // Use shared storage so data is available to all users
-      const result = await window.storage.get('sip-schools-data', true);
-      if (result && result.value) {
-        const data = JSON.parse(result.value);
+      const storedData = await storage.get('sip-schools-data');
+      if (storedData) {
+        const data = JSON.parse(storedData);
         setSchools(data);
         setLoading(false);
       } else {
@@ -42,6 +78,40 @@ const SIPDashboard = () => {
     }
   };
 
+  const loadTxtData = async () => {
+    try {
+      const stored = await storage.get('sip-schools-txt');
+      if (stored) return stored;
+    } catch (error) {
+      console.error('Error loading txt data:', error);
+    }
+    return null;
+  };
+
+  const loadChatHistory = async () => {
+    try {
+      let storedHistory = null;
+      if (typeof window !== 'undefined' && window.storage && window.storage.get) {
+        const result = await window.storage.get('sip-chat-history', false);
+        storedHistory = result?.value || null;
+      } else {
+        storedHistory = localStorage.getItem('sip-chat-history');
+      }
+      if (storedHistory) {
+        const history = JSON.parse(storedHistory);
+        setChatMessages(history);
+      }
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    loadChatHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleGoal = (index) => {
     setExpandedGoalIndex(expandedGoalIndex === index ? null : index);
   };
@@ -51,23 +121,13 @@ const SIPDashboard = () => {
     setExpandedGoalIndex(null);
   };
 
-  const loadChatHistory = async () => {
-    try {
-      // Use personal storage for chat history (not shared)
-      const result = await window.storage.get('sip-chat-history', false);
-      if (result && result.value) {
-        const history = JSON.parse(result.value);
-        setChatMessages(history);
-      }
-    } catch (error) {
-      console.error('Error loading chat history:', error);
-    }
-  };
-
   const saveChatHistory = async (messages) => {
     try {
-      // Use personal storage for chat history (not shared)
-      await window.storage.set('sip-chat-history', JSON.stringify(messages), false);
+      if (typeof window !== 'undefined' && window.storage && window.storage.set) {
+        await window.storage.set('sip-chat-history', JSON.stringify(messages), false);
+      } else {
+        localStorage.setItem('sip-chat-history', JSON.stringify(messages));
+      }
     } catch (error) {
       console.error('Error saving chat history:', error);
     }
@@ -76,27 +136,29 @@ const SIPDashboard = () => {
   const handleDataSubmit = async () => {
     try {
       const data = JSON.parse(jsonInput);
-      // Use shared storage so data is available to all users
-      await window.storage.set('sip-schools-data', JSON.stringify(data), true);
+      await storage.set('sip-schools-data', JSON.stringify(data));
+      if (txtInput.trim()) {
+        await storage.set('sip-schools-txt', txtInput.trim());
+      }
       setSchools(data);
       setShowDataInput(false);
       setJsonInput('');
+      setTxtInput('');
     } catch (error) {
       alert('Invalid JSON. Please check the format and try again.');
     }
   };
 
   const handleClearData = async () => {
-    if (confirm('Are you sure you want to clear all stored data? This will affect all users.')) {
-      // Use shared storage
-      await window.storage.delete('sip-schools-data', true);
+    if (confirm('Are you sure you want to clear all stored data?')) {
+      await storage.remove('sip-schools-data');
+      await storage.remove('sip-schools-txt');
       setSchools([]);
       setShowDataInput(true);
     }
   };
 
   const handleExportTable = () => {
-    // Create HTML table with styling
     let html = `
 <!DOCTYPE html>
 <html>
@@ -147,8 +209,8 @@ const SIPDashboard = () => {
         </td>
 `;
       school.goals.forEach(goal => {
-        const badgeClass = goal.area === 'ELA' ? 'badge-ela' : 
-                          goal.area === 'Math' ? 'badge-math' : 
+        const badgeClass = goal.area === 'ELA' ? 'badge-ela' :
+                          goal.area === 'Math' ? 'badge-math' :
                           goal.area === 'SEL' ? 'badge-sel' : 'badge-other';
         html += `        <td>
           <span class="badge ${badgeClass}">${goal.area}</span>`;
@@ -175,7 +237,6 @@ const SIPDashboard = () => {
 </body>
 </html>`;
 
-    // Create blob and download
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,65 +248,111 @@ const SIPDashboard = () => {
     URL.revokeObjectURL(url);
   };
 
+  // ─── UPDATED: handleChat with system prompt, prompt caching, and conversation history ───
   const handleChat = async () => {
     if (!chatInput.trim() || isProcessing) return;
 
     const userMessage = chatInput;
+    // Build updated message list with the new user message appended
     const newMessages = [...chatMessages, { role: 'user', content: userMessage }];
     setChatMessages(newMessages);
     setChatInput('');
     setIsProcessing(true);
 
     try {
-      const context = schools.map(s => {
-        const goalsText = s.goals.map(g => {
-          const focusText = g.focus_area || g.focus || 'N/A';
-          const groupText = g.focus_group ? ` (Focus Group: ${g.focus_group})` : '';
-          return `${g.area}: ${focusText}${groupText}`;
-        }).join('; ');
-        return `${s.name} (${s.level}): Goals - ${goalsText}`;
-      }).join('\n\n');
+      const txtContext = await loadTxtData();
+
+      const headers = {
+        'Content-Type': 'application/json',
+        // anthropic-beta header enables prompt caching
+        'anthropic-beta': 'prompt-caching-2024-07-31',
+      };
+
+      if (ANTHROPIC_API_KEY) {
+        headers['x-api-key'] = ANTHROPIC_API_KEY;
+        headers['anthropic-version'] = '2023-06-01';
+      }
+
+      // System prompt: attribution rules first, then the (cached) structured text data block
+      const systemPrompt = [
+        {
+          type: 'text',
+          text: `You are an expert analyst helping a school board director review School Improvement Plans (SIPs).
+
+CRITICAL ATTRIBUTION RULES — follow these exactly every time:
+1. The data is a structured text file where each goal is its own chunk. Every chunk begins with a "School:" line that states the school name. That line is the authoritative source for which school a goal belongs to.
+2. When answering questions, always read the "School:" line of each chunk before citing it. Use that school name verbatim.
+3. Never transfer information from one school to another. If you are not 100% certain which school a piece of information belongs to, say so explicitly rather than guessing.
+4. When listing schools that share a characteristic, verify each school independently by checking its "School:" line before including it in your answer.
+5. If you cannot find information for a specific school or goal, say "I could not find that information" rather than substituting data from another school.
+
+RESPONSE STYLE:
+- Be concise and accurate.
+- When listing multiple schools, use a bulleted list with the school name bolded.
+- Always cite the relevant goal area (ELA, Math, SEL, etc.) alongside the school name.`,
+        },
+        {
+          type: 'text',
+          // This large block is marked for caching — Anthropic will reuse the
+          // processed version across turns as long as the text is identical.
+          text: `Here is the complete School Improvement Plan data. It is a structured text file where each goal is represented by a chunk of text. Each chunk begins with a "School:" line identifying the school, followed by the goal number, area, grades, and student group, then the outcome, focus area, current data, strategies, and engagement strategies.\n\n${txtContext || 'No structured text data loaded. Please update data.'}`,
+          cache_control: { type: 'ephemeral' },
+        },
+      ];
+
+      // Convert stored chat messages to the API format.
+      // Stored messages use { role, content } which maps directly.
+      const apiMessages = newMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 1000,
-          messages: [
-            {
-              role: 'user',
-              content: `You are analyzing School Improvement Plans for a school board director. Here is the data for all schools:
-
-${context}
-
-Question: ${userMessage}
-
-Please provide a helpful answer based on the SIP data above. Be specific and cite school names when relevant.`
-            }
-          ]
-        })
+          system: systemPrompt,
+          // Full conversation history sent every turn so the model has context
+          messages: apiMessages,
+        }),
       });
 
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
       const data = await response.json();
-      const assistantMessage = data.content.find(c => c.type === 'text')?.text || 'Unable to process request.';
-      
-      const updatedMessages = [...newMessages, { role: 'assistant', content: assistantMessage }];
+      const assistantMessage =
+        data.content.find(c => c.type === 'text')?.text || 'Unable to process request.';
+
+      const updatedMessages = [
+        ...newMessages,
+        { role: 'assistant', content: assistantMessage },
+      ];
       setChatMessages(updatedMessages);
       saveChatHistory(updatedMessages);
     } catch (error) {
-      const errorMessages = [...newMessages, { 
-        role: 'assistant', 
-        content: 'Sorry, I encountered an error processing your request.' 
-      }];
+      console.error('Chat error:', error);
+      let errorMsg = 'Sorry, I encountered an error processing your request.';
+
+      if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
+        errorMsg =
+          '⚠️ The Anthropic API cannot be called directly from browsers due to CORS restrictions.\n\nTo enable chat, you need a backend proxy server. All other features (tables, charts, search, export) work normally!\n\nContact your developer for setup help.';
+      }
+
+      const errorMessages = [
+        ...newMessages,
+        { role: 'assistant', content: errorMsg },
+      ];
       setChatMessages(errorMessages);
       saveChatHistory(errorMessages);
     } finally {
       setIsProcessing(false);
     }
   };
+  // ─── END UPDATED handleChat ───
 
   const stats = {
     total: schools.length,
@@ -262,13 +369,13 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
   function analyzePatterns(schools) {
     if (!schools.length) return [];
     const patterns = [];
-    
-    const mlFocus = schools.filter(s => 
+
+    const mlFocus = schools.filter(s =>
       s.goals.some(g => {
         const focusGroup = g.focus_group || '';
         const focusArea = g.focus_area || '';
         const oldFocus = g.focus || '';
-        return focusGroup.toLowerCase().includes('multilingual') || 
+        return focusGroup.toLowerCase().includes('multilingual') ||
                focusArea.toLowerCase().includes('multilingual') ||
                oldFocus.toLowerCase().includes('multilingual');
       })
@@ -287,7 +394,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
         const focusGroup = g.focus_group || '';
         const focusArea = g.focus_area || '';
         const oldFocus = g.focus || '';
-        return focusGroup.toLowerCase().includes('belong') || 
+        return focusGroup.toLowerCase().includes('belong') ||
                focusArea.toLowerCase().includes('belong') ||
                oldFocus.toLowerCase().includes('belong');
       })
@@ -321,7 +428,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
                focusArea.toLowerCase().includes(searchTerm.toLowerCase()) ||
                oldFocus.toLowerCase().includes(searchTerm.toLowerCase());
       });
-    const matchesFilter = filterArea === 'all' || 
+    const matchesFilter = filterArea === 'all' ||
       school.goals.some(g => g.area === filterArea);
     const matchesLevel = filterLevel === 'all' || school.level === filterLevel;
     return matchesSearch && matchesFilter && matchesLevel;
@@ -344,14 +451,23 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
             <p className="text-gray-600 mb-6">
               Paste your JSON data below to get started. This data will be saved and persist across sessions.
             </p>
-            
+
+            <div className="mb-2 font-medium text-gray-700">JSON Data <span className="text-gray-400 font-normal text-sm">(used for dashboard tables and charts)</span></div>
             <textarea
               value={jsonInput}
               onChange={(e) => setJsonInput(e.target.value)}
               placeholder='Paste your JSON array here (starts with [ and ends with ])'
-              className="w-full h-96 p-4 border border-gray-300 rounded-lg font-mono text-sm"
+              className="w-full h-64 p-4 border border-gray-300 rounded-lg font-mono text-sm"
             />
-            
+
+            <div className="mt-4 mb-2 font-medium text-gray-700">Structured Text Data <span className="text-gray-400 font-normal text-sm">(used for AI Q&amp;A)</span></div>
+            <textarea
+              value={txtInput}
+              onChange={(e) => setTxtInput(e.target.value)}
+              placeholder='Paste your structured text file here (each goal starts with "School: ...")'
+              className="w-full h-64 p-4 border border-gray-300 rounded-lg font-mono text-sm"
+            />
+
             <div className="mt-4 flex gap-4">
               <button
                 onClick={handleDataSubmit}
@@ -418,7 +534,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="text-sm text-gray-600 mb-1">ML Focus</div>
             <div className="text-3xl font-bold text-purple-600">
-              {schools.reduce((count, s) => 
+              {schools.reduce((count, s) =>
                 count + s.goals.filter(g => g.focus_student_group === 'ML').length, 0
               )}
             </div>
@@ -426,7 +542,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="text-sm text-gray-600 mb-1">Low Income Focus</div>
             <div className="text-3xl font-bold text-amber-600">
-              {schools.reduce((count, s) => 
+              {schools.reduce((count, s) =>
                 count + s.goals.filter(g => g.focus_student_group === 'Low Income').length, 0
               )}
             </div>
@@ -434,7 +550,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="text-sm text-gray-600 mb-1">Special Ed Focus</div>
             <div className="text-3xl font-bold text-rose-600">
-              {schools.reduce((count, s) => 
+              {schools.reduce((count, s) =>
                 count + s.goals.filter(g => g.focus_student_group === 'Special Education').length, 0
               )}
             </div>
@@ -442,7 +558,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="text-sm text-gray-600 mb-1">Race/Ethnicity Focus</div>
             <div className="text-3xl font-bold text-indigo-600">
-              {schools.reduce((count, s) => 
+              {schools.reduce((count, s) =>
                 count + s.goals.filter(g => g.focus_student_group === 'Race/Ethnicity').length, 0
               )}
             </div>
@@ -450,7 +566,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
           <div className="bg-white rounded-lg shadow-sm p-6">
             <div className="text-sm text-gray-600 mb-1">All Students Focus</div>
             <div className="text-3xl font-bold text-emerald-600">
-              {schools.reduce((count, s) => 
+              {schools.reduce((count, s) =>
                 count + s.goals.filter(g => g.focus_student_group === 'All Students').length, 0
               )}
             </div>
@@ -501,7 +617,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
         {/* Trend Analysis */}
         {stats.patterns.length > 0 && (
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <div 
+            <div
               className="flex items-center justify-between cursor-pointer"
               onClick={() => setExpandedAnalysis(!expandedAnalysis)}
             >
@@ -511,7 +627,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
               </div>
               {expandedAnalysis ? <ChevronUp /> : <ChevronDown />}
             </div>
-            
+
             {expandedAnalysis && (
               <div className="mt-4 space-y-4">
                 {stats.patterns.map((pattern, idx) => (
@@ -643,12 +759,48 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
 
         {/* AI Chat Interface */}
         <div className="bg-white rounded-lg shadow-sm p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <MessageSquare className="w-5 h-5 text-blue-600" />
-            <h2 className="text-xl font-semibold">Ask Questions About the SIPs</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-blue-600" />
+              <h2 className="text-xl font-semibold">Ask Questions About the SIPs</h2>
+            </div>
+            {chatMessages.length > 0 && (
+              confirmClearChat ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Clear chat history?</span>
+                  <button
+                    onClick={async () => {
+                      if (typeof window !== 'undefined' && window.storage && window.storage.delete) {
+                        await window.storage.delete('sip-chat-history', false);
+                      } else {
+                        localStorage.removeItem('sip-chat-history');
+                      }
+                      setChatMessages([]);
+                      setConfirmClearChat(false);
+                    }}
+                    className="text-sm text-white bg-red-500 hover:bg-red-600 px-2 py-1 rounded"
+                  >
+                    Yes, clear
+                  </button>
+                  <button
+                    onClick={() => setConfirmClearChat(false)}
+                    className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1 rounded border"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmClearChat(true)}
+                  className="text-sm text-gray-500 hover:text-red-500"
+                >
+                  Clear Chat
+                </button>
+              )
+            )}
           </div>
-          
-          <div className="space-y-4 mb-4 max-h-96 overflow-y-auto">
+
+          <div className="space-y-4 mb-4 overflow-y-auto resize-y" style={{ minHeight: '500px', maxHeight: '800px', height: '500px' }}>
             {chatMessages.length === 0 && (
               <div className="text-gray-500 text-sm">
                 Try asking: "Which schools are focusing on multilingual learners?" or "What are the common SEL themes?"
@@ -657,8 +809,8 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
             {chatMessages.map((msg, idx) => (
               <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-3xl rounded-lg px-4 py-2 ${
-                  msg.role === 'user' 
-                    ? 'bg-blue-600 text-white' 
+                  msg.role === 'user'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-900'
                 }`}>
                   {msg.role === 'user' ? (
@@ -666,7 +818,6 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
                   ) : (
                     <div className="prose prose-sm max-w-none">
                       {msg.content.split('\n').map((line, i) => {
-                        // Handle headers
                         if (line.startsWith('### ')) {
                           return <h3 key={i} className="font-bold text-lg mt-4 mb-2">{line.substring(4)}</h3>;
                         }
@@ -676,30 +827,25 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
                         if (line.startsWith('# ')) {
                           return <h1 key={i} className="font-bold text-2xl mt-4 mb-2">{line.substring(2)}</h1>;
                         }
-                        // Handle bullet points
                         if (line.startsWith('- ') || line.startsWith('* ')) {
                           return <li key={i} className="ml-4">{line.substring(2)}</li>;
                         }
-                        // Handle numbered lists
                         if (line.match(/^\d+\.\s/)) {
                           return <li key={i} className="ml-4">{line.replace(/^\d+\.\s/, '')}</li>;
                         }
-                        // Handle bold text
                         if (line.includes('**')) {
                           const parts = line.split('**');
                           return (
                             <p key={i} className="mb-2">
-                              {parts.map((part, j) => 
+                              {parts.map((part, j) =>
                                 j % 2 === 1 ? <strong key={j}>{part}</strong> : part
                               )}
                             </p>
                           );
                         }
-                        // Regular paragraph
                         if (line.trim()) {
                           return <p key={i} className="mb-2">{line}</p>;
                         }
-                        // Empty line
                         return <br key={i} />;
                       })}
                     </div>
@@ -752,14 +898,14 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
                   <X className="w-6 h-6" />
                 </button>
               </div>
-              
+
               <div className="p-6 space-y-6 overflow-y-auto">
                 <div>
                   <h3 className="text-lg font-semibold mb-4">School Improvement Goals</h3>
                   <div className="space-y-3">
                     {selectedSchool.goals.map((goal, idx) => (
                       <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div 
+                        <div
                           className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
                           onClick={() => toggleGoal(idx)}
                         >
@@ -799,7 +945,7 @@ Please provide a helpful answer based on the SIP data above. Be specific and cit
                             )}
                           </div>
                         </div>
-                        
+
                         {expandedGoalIndex === idx && (
                           <div className="p-4 bg-white border-t border-gray-200">
                             <div className="text-sm text-gray-600 mb-3">

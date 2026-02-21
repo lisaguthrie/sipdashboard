@@ -395,6 +395,25 @@ def extract_all_schools():
     output_file = "schools_extracted.json"
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(all_schools, f, indent=2, ensure_ascii=False)
+
+    output_file_text = "schools_extracted.txt"
+    with open(output_file_text, 'w', encoding='utf-8') as f:
+        for school in all_schools:
+            for goal in school['goals']:
+                f.write(f"School: {school['name']} ({school['level']})\n")
+                f.write(f"Goal #{school['goals'].index(goal) + 1} ({goal['area']}, {goal['focus_grades']}, {goal['focus_student_group']}): {goal['outcome']}\n")
+                f.write(f"Focus Area: {goal['focus_area']}\n")
+                f.write(f"Current Data: {goal['currentdata']}\n")
+                if goal['strategies']:
+                    f.write(f"Strategies:\n")
+                    for strategy in goal['strategies']:
+                        f.write(f" * Action: {strategy['action']}\n")
+                        f.write(f"   Measures: {strategy['measures']}\n")
+                elif goal['raw_strategies']:
+                    f.write(f"    Strategies (raw text): {goal['raw_strategies']}\n")
+                else:
+                    f.write(f"    Strategies: None found\n")
+                f.write(f"Engagement Strategies: {goal['engagement_strategies']}\n\n")
     
     # Print summary
     log_message(INFO, "\n" + "="*80)
