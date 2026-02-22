@@ -181,6 +181,10 @@ def build_embeddings_from_json(json_file='schools_extracted.json', output_file='
                 # Create goal entry
                 goal_id = create_goal_id(school_name, school_level, goal_index, goal.get('area', 'other'))
                 
+                strategies = goal.get('strategies', [])
+                if not strategies:
+                    strategies = goal.get('raw_strategies', 'Not found')
+
                 goal_entry = {
                     "id": goal_id,
                     "school_name": school_name,
@@ -190,15 +194,14 @@ def build_embeddings_from_json(json_file='schools_extracted.json', output_file='
                     "focus_grades": goal.get('focus_grades', ''),
                     "focus_student_group": goal.get('focus_student_group', ''),
                     "embedding": embedding.tolist(),  # Convert numpy array to list for JSON
-                    "content": {
-                        "outcome": goal.get('outcome', ''),
-                        "focus_area": goal.get('focus_area', ''),
-                        "focus_group": goal.get('focus_group', ''),
-                        "strategies_summarized": goal.get('strategies_summarized', ''),
-                        "currentdata": goal.get('currentdata', ''),
-                        "engagement_strategies": goal.get('engagement_strategies', ''),
-                        "strategies": goal.get('strategies', [])
-                    }
+                    "text": f"""
+School name: {school_name} ({school_level})
+Goal #{goal_index + 1} ({goal.get('area', 'Other')}, {goal.get('focus_grades', 'Unknown Focus Grades')}, {goal.get('focus_student_group', 'Unknown Focus Student Group')}): {goal.get('outcome', 'Outcome not found')}
+Focus Area: {goal.get('focus_area', 'Not found')}
+Current Data: {goal.get('currentdata', 'Not found')}
+Strategies: {strategies}
+Engagement Strategies: {goal.get('engagement_strategies', 'Not found')}
+"""
                 }
                 
                 embeddings_data['goals'].append(goal_entry)
