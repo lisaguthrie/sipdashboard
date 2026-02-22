@@ -396,24 +396,21 @@ def extract_all_schools():
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(all_schools, f, indent=2, ensure_ascii=False)
 
-    output_file_text = "schools_extracted.txt"
-    with open(output_file_text, 'w', encoding='utf-8') as f:
-        for school in all_schools:
-            for goal in school['goals']:
-                f.write(f"School: {school['name']} ({school['level']})\n")
-                f.write(f"Goal #{school['goals'].index(goal) + 1} ({goal['area']}, {goal['focus_grades']}, {goal['focus_student_group']}): {goal['outcome']}\n")
-                f.write(f"Focus Area: {goal['focus_area']}\n")
-                f.write(f"Current Data: {goal['currentdata']}\n")
-                if goal['strategies']:
-                    f.write(f"Strategies:\n")
-                    for strategy in goal['strategies']:
-                        f.write(f" * Action: {strategy['action']}\n")
-                        f.write(f"   Measures: {strategy['measures']}\n")
-                elif goal['raw_strategies']:
-                    f.write(f"    Strategies (raw text): {goal['raw_strategies']}\n")
-                else:
-                    f.write(f"    Strategies: None found\n")
-                f.write(f"Engagement Strategies: {goal['engagement_strategies']}\n\n")
+    # Build vector embeddings for semantic search
+    log_message(INFO, "\n" + "="*80)
+    log_message(INFO, "BUILDING VECTOR EMBEDDINGS")
+    log_message(INFO, "="*80)
+    
+    try:
+        from vector_store import build_embeddings_from_json
+        embeddings_file = build_embeddings_from_json(output_file)
+        log_message(INFO, f"✓ Successfully created embeddings: {embeddings_file}")
+    except ImportError as e:
+        log_message(WARNING, f"Vector store dependencies not installed. Run: pip install sentence-transformers chromadb numpy")
+        log_message(WARNING, f"Skipping embedding generation. JSON output still available.")
+    except Exception as e:
+        log_message(ERROR, f"Failed to build embeddings: {e}")
+        log_message(WARNING, f"Continuing without embeddings. JSON output still available.")
     
     # Print summary
     log_message(INFO, "\n" + "="*80)

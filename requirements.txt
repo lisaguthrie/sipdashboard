@@ -1,0 +1,14 @@
+# PDF extraction
+pdfplumber
+
+# AI/ML
+anthropic
+sentence-transformers
+chromadb
+numpy
+
+# Utilities
+python-dotenv
+
+# Testing
+pytest

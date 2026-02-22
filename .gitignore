@@ -3,3 +3,26 @@
 __pycache__/
 .pytest_cache/
 dashboard/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

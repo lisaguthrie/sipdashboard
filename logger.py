@@ -3,7 +3,7 @@ INFO = 1
 WARNING = 2
 ERROR = 3
 levels = {DEBUG: "DEBUG", INFO: "INFO", WARNING: "WARNING", ERROR: "ERROR"}
-LOGLEVEL = INFO
+LOGLEVEL = WARNING
 
 def log_message(loglevel: int, logmessage: str):
     """Simple logging function with levels"""

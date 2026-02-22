@@ -16,8 +16,18 @@ This is a School Improvement Plan (SIP) data extraction and analysis system that
 # Extract all schools from PDFs using the school index
 python extract_sips.py
 
+# This will generate:
+# - schools_extracted.json (structured goal data)
+# - goals_embeddings.json (vector embeddings for semantic search)
+
 # Parse school index from text to JSON (if needed)
 python parse_school_index.py
+
+# Build embeddings separately (if needed)
+python vector_store.py
+
+# Test semantic search from command line
+python vector_store.py "math interventions for third grade"
 ```
 
 ### Testing
@@ -28,6 +38,7 @@ pytest
 # Run a specific test file
 pytest test_prompts.py
 pytest test_json_loading.py
+pytest test_vector_store.py
 
 # Run with verbose output
 pytest -v
@@ -35,7 +46,8 @@ pytest -v
 
 ### Environment Setup
 - Create a `.env` file with `ANTHROPIC_API_KEY=your_api_key_here`
-- Required Python packages: `pdfplumber`, `anthropic`, `pytest`, `python-dotenv`
+- Install dependencies: `pip install -r requirements.txt`
+- Required Python packages: `pdfplumber`, `anthropic`, `sentence-transformers`, `chromadb`, `numpy`, `pytest`, `python-dotenv`
 
 ## Architecture
 
@@ -43,10 +55,12 @@ pytest -v
 
 ```
 PDF Files → extract_sips.py → AI Normalization → schools_extracted.json → React Dashboard
-    ↑              ↓                    ↓
-school_index.json  ↓              ai_helper.py
-                   ↓              prompts.py
-              pdfplumber           Claude API
+    ↑              ↓                    ↓                       ↓
+school_index.json  ↓              ai_helper.py          vector_store.py
+                   ↓              prompts.py                   ↓
+              pdfplumber           Claude API          goals_embeddings.json
+                                                              ↓
+                                                    (Semantic Search in Dashboard)
 ```
 
 ### Core Components
@@ -57,7 +71,16 @@ school_index.json  ↓              ai_helper.py
 - Key challenge: Tables can be nested (outer goal definition table with embedded action/measures table)
 - Handles page breaks that can split table rows mid-content
 - Normalizes goal areas (Math, ELA, SEL, etc.) and calls AI for focus group normalization
-- Outputs structured JSON with 3 goals per school
+- Generates vector embeddings for semantic search using `vector_store.py`
+- Outputs structured JSON with 3 goals per school: `schools_extracted.json` and `goals_embeddings.json`
+
+**vector_store.py** - Vector embeddings for semantic search
+- Generates embeddings for all goals using `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions)
+- Creates searchable text from goal fields: outcome, focus_area, full strategies text (actions + measures)
+- Exports `goals_embeddings.json` with pre-computed vectors and metadata
+- Enables semantic search without requiring a backend server
+- Supports filtering by area, school_level, focus_grades, focus_student_group
+- Can be run standalone or called automatically during extraction
 
 **ai_helper.py** - AI-powered data normalization
 - Two main functions:
@@ -141,6 +164,45 @@ The system minimizes API costs by:
 ### Testing Philosophy
 
 Tests use `use_ai=False` parameter to avoid API calls during testing. The `set_client()` function in `ai_helper.py` allows injecting mock clients for unit tests.
+
+### Vector Store and Semantic Search
+
+The system generates vector embeddings for semantic search capabilities:
+
+**Architecture:**
+- Pre-computed embeddings during extraction (server-side)
+- Exported as `goals_embeddings.json` (~5-10MB for 150 goals)
+- Designed for client-side search in Claude artifacts (no backend required)
+- Uses `sentence-transformers/all-MiniLM-L6-v2` model (384 dimensions)
+
+**Embeddings file structure:**
+```json
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "dimensions": 384,
+  "goals": [
+    {
+      "id": "school-level-goal-1-area",
+      "school_name": "School Name",
+      "school_level": "Elementary School",
+      "area": "Math",
+      "embedding": [0.123, -0.456, ...],  // 384-dim vector
+      "content": {
+        "outcome": "...",
+        "focus_area": "...",
+        "strategies_summarized": "..."
+      }
+    }
+  ]
+}
+```
+
+**Dashboard integration (future):**
+- User uploads both JSON files to artifact storage
+- Dashboard uses transformers.js (@xenova/transformers) to embed queries in-browser
+- Computes cosine similarity client-side against pre-computed vectors
+- Returns top-k most relevant goals for RAG with Claude
+- Reduces token usage by ~90% vs sending all schools
 
 ## React Dashboard
 
