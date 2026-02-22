@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Upload, Search, MessageSquare, X, ChevronDown, ChevronUp, FileText, TrendingUp } from 'lucide-react';
 
-// For external deployments: Set your API key here or use environment variables
-// Leave empty for Claude artifacts (authentication handled automatically)
-const ANTHROPIC_API_KEY = '';
-
 const SIPDashboard = () => {
   const [schools, setSchools] = useState([]);
   const [selectedSchool, setSelectedSchool] = useState(null);
@@ -22,85 +18,70 @@ const SIPDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [expandedGoalIndex, setExpandedGoalIndex] = useState(null);
   const [confirmClearChat, setConfirmClearChat] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+  const [loadingMessage, setLoadingMessage] = useState('Loading data...');
+  // API base URL: empty string = same origin (production); set via env var for local dev
+  const API_BASE = typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL
+    ? import.meta.env.VITE_API_BASE_URL
+    : '';
 
-  // Storage adapter that works in both Claude artifacts and regular browsers
   const storage = {
-    get: async (key) => {
-      try {
-        if (typeof window !== 'undefined' && window.storage && window.storage.get) {
-          const result = await window.storage.get(key, true);
-          return result?.value || null;
-        }
-        return localStorage.getItem(key);
-      } catch (e) {
-        return localStorage.getItem(key);
-      }
-    },
-    set: async (key, value) => {
-      try {
-        if (typeof window !== 'undefined' && window.storage && window.storage.set) {
-          await window.storage.set(key, value, true);
-          return;
-        }
-        localStorage.setItem(key, value);
-      } catch (e) {
-        localStorage.setItem(key, value);
-      }
-    },
-    remove: async (key) => {
-      try {
-        if (typeof window !== 'undefined' && window.storage && window.storage.delete) {
-          await window.storage.delete(key, true);
-          return;
-        }
-        localStorage.removeItem(key);
-      } catch (e) {
-        localStorage.removeItem(key);
-      }
-    }
+    get:    (key)        => localStorage.getItem(key),
+    set:    (key, value) => localStorage.setItem(key, value),
+    remove: (key)        => localStorage.removeItem(key),
   };
+
+  const GITHUB_RAW_URL = 'https://raw.githubusercontent.com/lisaguthrie/sipdashboard/refs/heads/main/schools_extracted.json';
 
   const loadData = async () => {
     try {
-      const storedData = await storage.get('sip-schools-data');
-      if (storedData) {
-        const data = JSON.parse(storedData);
-        setSchools(data);
+      // First, check localStorage for cached data
+      const stored = storage.get('sip-schools-data');
+      if (stored) {
+        setSchools(JSON.parse(stored));
         setLoading(false);
-      } else {
-        setLoading(false);
-        setShowDataInput(true);
+        return;
       }
+
+      // If no cached data, fetch from GitHub
+      setLoadingMessage('Loading school data from GitHub...');
+      const response = await fetch(GITHUB_RAW_URL);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch data: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Cache the data in localStorage
+      storage.set('sip-schools-data', JSON.stringify(data));
+      setSchools(data);
+      setFetchError(null);
+      
     } catch (error) {
       console.error('Error loading data:', error);
-      setLoading(false);
+      setFetchError(error.message || 'Failed to load data from GitHub');
       setShowDataInput(true);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const loadTxtData = async () => {
-    try {
-      const stored = await storage.get('sip-schools-txt');
-      if (stored) return stored;
-    } catch (error) {
-      console.error('Error loading txt data:', error);
-    }
-    return null;
+  const handleRefreshFromGitHub = async () => {
+    // Clear cache and force re-fetch
+    storage.remove('sip-schools-data');
+    setSchools([]);
+    setLoading(true);
+    setFetchError(null);
+    await loadData();
   };
 
-  const loadChatHistory = async () => {
+  const loadTxtData = () => localStorage.getItem('sip-schools-txt');
+
+  const loadChatHistory = () => {
     try {
-      let storedHistory = null;
-      if (typeof window !== 'undefined' && window.storage && window.storage.get) {
-        const result = await window.storage.get('sip-chat-history', false);
-        storedHistory = result?.value || null;
-      } else {
-        storedHistory = localStorage.getItem('sip-chat-history');
-      }
-      if (storedHistory) {
-        const history = JSON.parse(storedHistory);
-        setChatMessages(history);
-      }
+      const stored = localStorage.getItem('sip-chat-history');
+      if (stored) setChatMessages(JSON.parse(stored));
     } catch (error) {
       console.error('Error loading chat history:', error);
     }
@@ -109,8 +90,7 @@ const SIPDashboard = () => {
   useEffect(() => {
     loadData();
     loadChatHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleGoal = (index) => {
     setExpandedGoalIndex(expandedGoalIndex === index ? null : index);
@@ -121,27 +101,24 @@ const SIPDashboard = () => {
     setExpandedGoalIndex(null);
   };
 
-  const saveChatHistory = async (messages) => {
+  const saveChatHistory = (messages) => {
     try {
-      if (typeof window !== 'undefined' && window.storage && window.storage.set) {
-        await window.storage.set('sip-chat-history', JSON.stringify(messages), false);
-      } else {
-        localStorage.setItem('sip-chat-history', JSON.stringify(messages));
-      }
+      localStorage.setItem('sip-chat-history', JSON.stringify(messages));
     } catch (error) {
       console.error('Error saving chat history:', error);
     }
   };
 
-  const handleDataSubmit = async () => {
+  const handleDataSubmit = () => {
     try {
       const data = JSON.parse(jsonInput);
-      await storage.set('sip-schools-data', JSON.stringify(data));
+      storage.set('sip-schools-data', JSON.stringify(data));
       if (txtInput.trim()) {
-        await storage.set('sip-schools-txt', txtInput.trim());
+        storage.set('sip-schools-txt', txtInput.trim());
       }
       setSchools(data);
       setShowDataInput(false);
+      setFetchError(null);
       setJsonInput('');
       setTxtInput('');
     } catch (error) {
@@ -149,11 +126,12 @@ const SIPDashboard = () => {
     }
   };
 
-  const handleClearData = async () => {
+  const handleClearData = () => {
     if (confirm('Are you sure you want to clear all stored data?')) {
-      await storage.remove('sip-schools-data');
-      await storage.remove('sip-schools-txt');
+      storage.remove('sip-schools-data');
+      storage.remove('sip-schools-txt');
       setSchools([]);
+      setFetchError(null);
       setShowDataInput(true);
     }
   };
@@ -260,72 +238,24 @@ const SIPDashboard = () => {
     setIsProcessing(true);
 
     try {
-      const txtContext = await loadTxtData();
-
-      const headers = {
-        'Content-Type': 'application/json',
-        // anthropic-beta header enables prompt caching
-        'anthropic-beta': 'prompt-caching-2024-07-31',
-      };
-
-      if (ANTHROPIC_API_KEY) {
-        headers['x-api-key'] = ANTHROPIC_API_KEY;
-        headers['anthropic-version'] = '2023-06-01';
-      }
-
-      // System prompt: attribution rules first, then the (cached) structured text data block
-      const systemPrompt = [
-        {
-          type: 'text',
-          text: `You are an expert analyst helping a school board director review School Improvement Plans (SIPs).
-
-CRITICAL ATTRIBUTION RULES — follow these exactly every time:
-1. The data is a structured text file where each goal is its own chunk. Every chunk begins with a "School:" line that states the school name. That line is the authoritative source for which school a goal belongs to.
-2. When answering questions, always read the "School:" line of each chunk before citing it. Use that school name verbatim.
-3. Never transfer information from one school to another. If you are not 100% certain which school a piece of information belongs to, say so explicitly rather than guessing.
-4. When listing schools that share a characteristic, verify each school independently by checking its "School:" line before including it in your answer.
-5. If you cannot find information for a specific school or goal, say "I could not find that information" rather than substituting data from another school.
-
-RESPONSE STYLE:
-- Be concise and accurate.
-- When listing multiple schools, use a bulleted list with the school name bolded.
-- Always cite the relevant goal area (ELA, Math, SEL, etc.) alongside the school name.`,
-        },
-        {
-          type: 'text',
-          // This large block is marked for caching — Anthropic will reuse the
-          // processed version across turns as long as the text is identical.
-          text: `Here is the complete School Improvement Plan data. It is a structured text file where each goal is represented by a chunk of text. Each chunk begins with a "School:" line identifying the school, followed by the goal number, area, grades, and student group, then the outcome, focus area, current data, strategies, and engagement strategies.\n\n${txtContext || 'No structured text data loaded. Please update data.'}`,
-          cache_control: { type: 'ephemeral' },
-        },
-      ];
-
-      // Convert stored chat messages to the API format.
-      // Stored messages use { role, content } which maps directly.
-      const apiMessages = newMessages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      }));
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
+      // Send question + conversation history to the server.
+      // The server handles RAG retrieval and the Anthropic API call.
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: systemPrompt,
-          // Full conversation history sent every turn so the model has context
-          messages: apiMessages,
+          question: userMessage,
+          history: chatMessages,   // full history so server can pass it to Anthropic
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error: ${response.status}`);
       }
 
       const data = await response.json();
-      const assistantMessage =
-        data.content.find(c => c.type === 'text')?.text || 'Unable to process request.';
+      const assistantMessage = data.answer || 'Unable to process request.';
 
       const updatedMessages = [
         ...newMessages,
@@ -333,13 +263,12 @@ RESPONSE STYLE:
       ];
       setChatMessages(updatedMessages);
       saveChatHistory(updatedMessages);
-    } catch (error) {
+    } catch (error) {"m"
       console.error('Chat error:', error);
       let errorMsg = 'Sorry, I encountered an error processing your request.';
 
       if (error.message.includes('Failed to fetch') || error.name === 'TypeError') {
-        errorMsg =
-          '⚠️ The Anthropic API cannot be called directly from browsers due to CORS restrictions.\n\nTo enable chat, you need a backend proxy server. All other features (tables, charts, search, export) work normally!\n\nContact your developer for setup help.';
+        errorMsg = '⚠️ Could not reach the API server. Please check that the server is running and try again.';
       }
 
       const errorMessages = [
@@ -437,7 +366,10 @@ RESPONSE STYLE:
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="text-center">
+          <div className="text-xl mb-2">{loadingMessage}</div>
+          <div className="text-sm text-gray-500">Please wait...</div>
+        </div>
       </div>
     );
   }
@@ -448,8 +380,24 @@ RESPONSE STYLE:
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-lg shadow-sm p-6">
             <h1 className="text-3xl font-bold mb-4">School Improvement Plan Dashboard</h1>
+            
+            {fetchError && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="font-semibold text-red-800 mb-2">Failed to load data from GitHub</div>
+                <div className="text-red-700 text-sm mb-3">{fetchError}</div>
+                <button
+                  onClick={handleRefreshFromGitHub}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
+                >
+                  Retry from GitHub
+                </button>
+              </div>
+            )}
+            
             <p className="text-gray-600 mb-6">
-              Paste your JSON data below to get started. This data will be saved and persist across sessions.
+              {fetchError 
+                ? 'You can manually paste your JSON data below, or retry loading from GitHub.'
+                : 'Paste your JSON data below to get started. This data will be saved and persist across sessions.'}
             </p>
 
             <div className="mb-2 font-medium text-gray-700">JSON Data <span className="text-gray-400 font-normal text-sm">(used for dashboard tables and charts)</span></div>
@@ -501,6 +449,13 @@ RESPONSE STYLE:
               <p className="text-gray-600">2025-26 School Year • {schools.length} Schools</p>
             </div>
             <div className="flex gap-2">
+              <button
+                onClick={handleRefreshFromGitHub}
+                className="px-4 py-2 text-sm bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg"
+                title="Fetch latest data from GitHub"
+              >
+                Refresh from GitHub
+              </button>
               <button
                 onClick={() => setShowDataInput(true)}
                 className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg"
@@ -763,18 +718,15 @@ RESPONSE STYLE:
             <div className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-blue-600" />
               <h2 className="text-xl font-semibold">Ask Questions About the SIPs</h2>
+
             </div>
             {chatMessages.length > 0 && (
               confirmClearChat ? (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600">Clear chat history?</span>
                   <button
-                    onClick={async () => {
-                      if (typeof window !== 'undefined' && window.storage && window.storage.delete) {
-                        await window.storage.delete('sip-chat-history', false);
-                      } else {
-                        localStorage.removeItem('sip-chat-history');
-                      }
+                    onClick={() => {
+                      localStorage.removeItem('sip-chat-history');
                       setChatMessages([]);
                       setConfirmClearChat(false);
                     }}

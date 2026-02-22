@@ -1,0 +1,72 @@
+name: Build and Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allow manual trigger from GitHub UI
+
+env:
+  # ── Change these three to match your Azure setup ──────────────────────────
+  AZURE_RESOURCE_GROUP: sip-dashboard-rg
+  AZURE_CONTAINER_APP: sip-dashboard-app
+  AZURE_CONTAINER_REGISTRY: sipdashboardacr  # must be globally unique, lowercase, no hyphens
+  # ─────────────────────────────────────────────────────────────────────────
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Build React app ───────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci
+
+      - name: Build dashboard
+        working-directory: dashboard
+        env:
+          # The deployed server is the API origin; Vite bakes this in at build time
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+        run: npm run build
+
+      # Copy the React build output into server/static so the Dockerfile picks it up
+      - name: Copy build output to server/static
+        run: |
+          mkdir -p server/static
+          cp -r dashboard/dist/. server/static/
+
+      # ── 3. Log in to Azure ───────────────────────────────────────────────
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # ── 4. Build and push Docker image to Azure Container Registry ───────
+      - name: Build and push image
+        run: |
+          az acr build \
+            --registry ${{ env.AZURE_CONTAINER_REGISTRY }} \
+            --image sip-dashboard:${{ github.sha }} \
+            --image sip-dashboard:latest \
+            --file server/Dockerfile \
+            server/
+
+      # ── 5. Deploy to Azure Container Apps ────────────────────────────────
+      - name: Deploy to Container Apps
+        run: |
+          az containerapp update \
+            --name ${{ env.AZURE_CONTAINER_APP }} \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/sip-dashboard:${{ github.sha }} \
+            --set-env-vars ANTHROPIC_API_KEY=secretref:anthropic-api-key

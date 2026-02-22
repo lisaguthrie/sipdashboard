@@ -2,7 +2,6 @@
 .vscode/
 __pycache__/
 .pytest_cache/
-dashboard/
 
 # Virtual environments
 .venv/

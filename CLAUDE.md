@@ -4,12 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a School Improvement Plan (SIP) data extraction and analysis system that:
-1. Extracts structured data from PDF SIP documents for school districts
-2. Uses Claude AI to normalize and summarize the extracted data
-3. Provides a React-based dashboard for visualization, search, and AI-powered Q&A
+This is a School Improvement Plan (SIP) data extraction and analysis system with:
+1. **Python extraction pipeline** - Extracts structured data from PDF SIP documents
+2. **AI-powered normalization** - Uses Claude AI to normalize and summarize extracted data
+3. **React + Vite frontend** - Modern web dashboard with charts, search, and filtering
+4. **FastAPI backend** - Provides semantic search (RAG) and AI chat capabilities
+5. **Azure deployment** - Containerized deployment via GitHub Actions to Azure Container Apps
 
 ## Common Commands
+
+### Development Setup
+
+**Python backend dependencies:**
+```bash
+cd server
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+**React frontend dependencies:**
+```bash
+cd dashboard
+npm install
+```
 
 ### Running the Extraction Pipeline
 ```bash
@@ -44,23 +62,71 @@ pytest test_vector_store.py
 pytest -v
 ```
 
+### Running the Web Application
+
+**Start the FastAPI backend server:**
+```bash
+cd server
+# Ensure .env file exists with ANTHROPIC_API_KEY=your_key
+uvicorn main:app --reload --port 8000
+```
+
+**Start the React development server:**
+```bash
+cd dashboard
+# Create .env.local with: VITE_API_BASE_URL=http://localhost:8000
+npm run dev
+```
+
+The dashboard will be available at `http://localhost:5173` (or the port shown in terminal).
+
+**Build for production:**
+```bash
+cd dashboard
+npm run build
+# Output goes to dashboard/dist/
+
+# To preview production build:
+npm run preview
+```
+
 ### Environment Setup
-- Create a `.env` file with `ANTHROPIC_API_KEY=your_api_key_here`
-- Install dependencies: `pip install -r requirements.txt`
-- Required Python packages: `pdfplumber`, `anthropic`, `sentence-transformers`, `chromadb`, `numpy`, `pytest`, `python-dotenv`
+- Root `.env` and `server/.env` require `ANTHROPIC_API_KEY=your_api_key_here`
+- `dashboard/.env.local` (for local dev) requires `VITE_API_BASE_URL=http://localhost:8000`
+- Root dependencies: `pip install -r requirements.txt` (for extraction scripts)
+- Server dependencies: `pip install -r server/requirements.txt` (for API server)
+- Dashboard dependencies: `npm install` in dashboard directory
 
 ## Architecture
 
 ### Data Flow
 
 ```
-PDF Files → extract_sips.py → AI Normalization → schools_extracted.json → React Dashboard
-    ↑              ↓                    ↓                       ↓
-school_index.json  ↓              ai_helper.py          vector_store.py
-                   ↓              prompts.py                   ↓
-              pdfplumber           Claude API          goals_embeddings.json
-                                                              ↓
-                                                    (Semantic Search in Dashboard)
+┌─────────────────── EXTRACTION PIPELINE (Python) ────────────────────┐
+│                                                                      │
+│  PDF Files → extract_sips.py → AI Normalization → schools_extracted.json
+│      ↑              ↓                    ↓
+│  school_index.json  ↓              ai_helper.py
+│                     ↓              prompts.py
+│                 pdfplumber         Claude API
+│
+│  vector_store.py → goals_embeddings.json
+│
+└──────────────────────────────────────────────────────────────┘
+                            ↓
+┌────────────────────── WEB APPLICATION ───────────────────────┐
+│                                                               │
+│  React Frontend (dashboard/)         FastAPI Backend (server/)
+│  ├─ App.jsx (main component)        ├─ main.py (API server)
+│  ├─ Charts & visualizations         ├─ RAG retrieval
+│  ├─ Search & filtering              ├─ Semantic search
+│  └─ AI chat interface ──────HTTP────┴─ Claude API proxy
+│                                      │
+│                                      └─ Loads goals_embeddings.json
+│
+└───────────────────────────────────────────────────────────────┘
+                            ↓
+                   Azure Container Apps
 ```
 
 ### Core Components
@@ -98,6 +164,46 @@ school_index.json  ↓              ai_helper.py          vector_store.py
 **logger.py** - Simple logging system
 - Log levels: DEBUG, INFO, WARNING, ERROR
 - Set `LOGLEVEL` to control verbosity (default: INFO)
+
+### Web Application Components
+
+**dashboard/src/App.jsx** - React frontend
+- Built with Vite, React 19, Tailwind CSS
+- Recharts for data visualization (pie charts, bar charts)
+- Lucide React for icons
+- Features:
+  - Overview statistics with charts showing goal area distribution
+  - Focus group statistics (ML, Low Income, Special Ed, etc.)
+  - Trend analysis identifying common themes (ML focus, sense of belonging)
+  - Search and multi-level filtering (school name, level, goal area)
+  - School detail modal with expandable goal cards
+  - AI chat interface with conversation history
+  - Export to HTML table
+- Uses localStorage for data persistence and chat history
+- Calls `/api/chat` endpoint on backend for AI Q&A
+
+**server/main.py** - FastAPI backend server
+- Provides RAG (Retrieval-Augmented Generation) for AI chat
+- Loads `goals_embeddings.json` from CDN on startup
+- Uses `sentence-transformers/all-MiniLM-L6-v2` for query embedding
+- Retrieves top-k most relevant goals via cosine similarity
+- Calls Claude Sonnet 4 API with conversation history and retrieved context
+- Uses prompt caching to reduce API costs (~90% savings on repeated context)
+- Serves static React build files for production deployment
+- CORS enabled for local development
+
+**server/Dockerfile** - Container image for deployment
+- Multi-stage build optimizing for size
+- Copies React build into `server/static/`
+- Installs Python dependencies and downloads embedding model
+- Exposes port 8000, runs via uvicorn
+
+**.github/workflows/deploy.yml** - CI/CD pipeline
+- Triggered on push to main branch
+- Builds React frontend with production environment variables
+- Copies build output to `server/static/`
+- Builds Docker image and pushes to Azure Container Registry
+- Deploys to Azure Container Apps with secret management for API key
 
 ### School Index Structure
 
@@ -170,10 +276,10 @@ Tests use `use_ai=False` parameter to avoid API calls during testing. The `set_c
 The system generates vector embeddings for semantic search capabilities:
 
 **Architecture:**
-- Pre-computed embeddings during extraction (server-side)
+- Pre-computed embeddings during extraction using `vector_store.py`
 - Exported as `goals_embeddings.json` (~5-10MB for 150 goals)
-- Designed for client-side search in Claude artifacts (no backend required)
 - Uses `sentence-transformers/all-MiniLM-L6-v2` model (384 dimensions)
+- Backend server loads embeddings from CDN on startup for zero-latency search
 
 **Embeddings file structure:**
 ```json
@@ -187,6 +293,7 @@ The system generates vector embeddings for semantic search capabilities:
       "school_level": "Elementary School",
       "area": "Math",
       "embedding": [0.123, -0.456, ...],  // 384-dim vector
+      "text": "School name: ...\nGoal #1 ...",  // Full text for RAG context
       "content": {
         "outcome": "...",
         "focus_area": "...",
@@ -197,28 +304,75 @@ The system generates vector embeddings for semantic search capabilities:
 }
 ```
 
-**Dashboard integration (future):**
-- User uploads both JSON files to artifact storage
-- Dashboard uses transformers.js (@xenova/transformers) to embed queries in-browser
-- Computes cosine similarity client-side against pre-computed vectors
-- Returns top-k most relevant goals for RAG with Claude
-- Reduces token usage by ~90% vs sending all schools
+**RAG implementation (backend):**
+- FastAPI server embeds user question using same model
+- Computes cosine similarity against all goal embeddings (batch dot product)
+- Returns top-k (default 10) most relevant goal texts
+- Injects retrieved context into Claude API system prompt with cache control
+- Prompt caching reduces token costs by ~90% when context doesn't change
+- Critical attribution rules in system prompt prevent school misattribution
 
-## React Dashboard
+## Deployment
 
-**SIPDashboard.jsx** - Frontend visualization
-- Loads data from persistent storage API (`window.storage`)
-- Features:
-  - Overview stats with charts (Recharts library)
-  - Search and filtering by school level and goal area
-  - Detailed school view modal with expandable goals
-  - AI chat interface for natural language queries
-  - Export to HTML table
-- Uses shared storage for school data (multi-user) and personal storage for chat history
+### Local Development
+1. Start backend: `cd server && uvicorn main:app --reload`
+2. Start frontend: `cd dashboard && npm run dev`
+3. Frontend proxies API calls to `http://localhost:8000` (configured via `.env.local`)
+
+### Production Deployment (Azure)
+The project uses GitHub Actions for automated deployment to Azure Container Apps:
+
+**Prerequisites:**
+- Azure Container Registry (ACR) created
+- Azure Container App created with managed identity
+- GitHub secrets configured:
+  - `AZURE_CREDENTIALS` - Service principal JSON for Azure login
+  - `VITE_API_BASE_URL` - Empty string (API served from same origin)
+- Container App secret `anthropic-api-key` configured
+
+**Deployment flow:**
+1. Push to main branch triggers workflow
+2. GitHub Actions builds React app with production env vars
+3. Copies build to `server/static/`
+4. Builds Docker image with both frontend and backend
+5. Pushes to Azure Container Registry
+6. Deploys new image to Azure Container Apps
+
+**Architecture notes:**
+- Single container serves both React static files and API
+- FastAPI serves React SPA on all non-API routes
+- Embedding model and goals JSON loaded once at container startup
+- Horizontal scaling possible (model loaded in each instance)
+
+### Manual Deployment
+```bash
+# Build React app
+cd dashboard
+npm run build
+
+# Copy to server static directory
+mkdir -p ../server/static
+cp -r dist/. ../server/static/
+
+# Build and run Docker container locally
+cd ../server
+docker build -t sip-dashboard .
+docker run -p 8000:8000 -e ANTHROPIC_API_KEY=your_key sip-dashboard
+```
 
 ## Important Notes
 
+### Extraction Pipeline
 - **School index accuracy**: `school_index.json` may need manual correction if PDF page ranges don't match actual content
 - **Log level**: Set `logger.LOGLEVEL = logger.DEBUG` in your script to see detailed extraction progress
 - **API key**: Required in `.env` for extraction to work; tests can run without it using `use_ai=False`
 - **Goal limit**: System extracts up to 3 goals per school (hard-coded in `find_school_in_pdf()`)
+
+### Web Application
+- **API key security**: Never commit `.env` files; use GitHub secrets for deployment
+- **CORS**: Backend allows all origins in dev; tighten for production by modifying `server/main.py`
+- **Embeddings CDN**: Backend fetches embeddings from GitHub CDN on startup (configured in `server/main.py`)
+- **localStorage limits**: Browser localStorage has ~5-10MB limit; works fine for 50 schools
+- **Chat history**: Stored in browser localStorage; cleared only when user clicks "Clear Chat"
+- **Model downloads**: First container startup downloads ~100MB sentence-transformers model
+- **Prompt caching**: Backend uses Claude's ephemeral caching to reduce costs; cache TTL is 5 minutes
